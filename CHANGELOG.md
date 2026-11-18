@@ -4,6 +4,10 @@ All notable changes to Takto are documented in this file. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Audio buffering preference in Settings: choose 256, 512, or 1024 frames, with each option showing its nominal delay at the current sample rate. Takto rebuilds the output stream after a change, persists the choice, and loads older settings with 512 frames. PipeWire/ALSA still negotiates the effective latency.
+
 ## [0.1.7] - 2026-11-12
 
 ### Added

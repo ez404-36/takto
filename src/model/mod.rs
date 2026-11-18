@@ -9,6 +9,12 @@ pub const MAX_BEATS: u32 = 16;
 /// over-amplification idea.
 pub const MAX_VOLUME: f32 = 2.0;
 
+/// Requested callback buffer sizes, in frames per channel. The audio server
+/// still negotiates the effective latency, so these are preferences rather
+/// than guarantees.
+pub const AUDIO_BUFFER_FRAMES: [u32; 3] = [256, 512, 1024];
+pub const DEFAULT_AUDIO_BUFFER_FRAMES: u32 = 512;
+
 /// Built-in meters, always available in the sizes dialog. The first number
 /// is the beat count, the second the written beat unit.
 pub const PRESET_METERS: [(u32, u32); 4] = [(2, 4), (3, 4), (4, 4), (6, 8)];
@@ -317,6 +323,8 @@ pub struct SharedParams {
     /// Selected interface language as its position in `LANGUAGES`.
     pub language: AtomicUsize,
     pub sample_rate: AtomicU32,
+    /// Requested callback buffer size in frames per channel.
+    buffer_frames: AtomicU32,
     /// User-defined meters as `(beats, denominator)` pairs. UI-only state:
     /// the audio thread never reads it, but it lives here so the persistence
     /// snapshot covers it like every other setting.
@@ -341,6 +349,7 @@ impl SharedParams {
             sample: AtomicUsize::new(0),
             language: AtomicUsize::new(Language::default().index()),
             sample_rate: AtomicU32::new(48_000),
+            buffer_frames: AtomicU32::new(DEFAULT_AUDIO_BUFFER_FRAMES),
             custom_meters: Mutex::new(Vec::new()),
             visible_meters: Mutex::new(PRESET_METERS.to_vec()),
         }
@@ -460,6 +469,15 @@ impl SharedParams {
 
     pub fn set_language(&self, language: Language) {
         self.language.store(language.index(), Ordering::SeqCst);
+    }
+
+    pub fn buffer_frames(&self) -> u32 {
+        self.buffer_frames.load(Ordering::SeqCst)
+    }
+
+    pub fn set_buffer_frames(&self, requested_frames: u32) {
+        self.buffer_frames
+            .store(normalize_buffer_frames(requested_frames), Ordering::SeqCst);
     }
 
     /// Poisoning only happens on a panic while holding the guard; recovering
@@ -712,6 +730,10 @@ pub struct AppSettings {
     /// field existed on English.
     #[serde(default)]
     pub language: Language,
+    /// Requested audio callback buffer size in frames per channel. The
+    /// default keeps older saves on the more stable 512-frame request.
+    #[serde(default = "default_audio_buffer_frames")]
+    pub buffer_frames: u32,
 }
 
 impl Default for AppSettings {
@@ -728,12 +750,17 @@ impl Default for AppSettings {
             highlight_first: true,
             sample: None,
             language: Language::default(),
+            buffer_frames: DEFAULT_AUDIO_BUFFER_FRAMES,
         }
     }
 }
 
 fn default_highlight_first() -> bool {
     true
+}
+
+fn default_audio_buffer_frames() -> u32 {
+    DEFAULT_AUDIO_BUFFER_FRAMES
 }
 
 impl AppSettings {
@@ -773,6 +800,7 @@ impl AppSettings {
             highlight_first: params.highlight_first(),
             sample: Some(params.sample()),
             language: params.language(),
+            buffer_frames: params.buffer_frames(),
         }
     }
 
@@ -839,7 +867,28 @@ impl AppSettings {
         params.set_highlight_first(self.highlight_first);
         params.set_sample(self.sample.unwrap_or(0));
         params.set_language(self.language);
+        params.set_buffer_frames(self.buffer_frames);
     }
+}
+
+/// Snaps an arbitrary saved value onto a supported buffer request. Distance
+/// based normalization keeps corrupt saves near their original intent instead
+/// of silently replacing 300 frames with the minimum.
+pub fn normalize_buffer_frames(requested_frames: u32) -> u32 {
+    AUDIO_BUFFER_FRAMES
+        .iter()
+        .copied()
+        .min_by_key(|&frames| frames.abs_diff(requested_frames))
+        .unwrap_or(DEFAULT_AUDIO_BUFFER_FRAMES)
+}
+
+/// Dropdown index for a previously saved buffer request.
+#[cfg_attr(not(feature = "ui"), allow(dead_code))]
+pub fn audio_buffer_frames_index(buffer_frames: u32) -> usize {
+    AUDIO_BUFFER_FRAMES
+        .iter()
+        .position(|&frames| frames == normalize_buffer_frames(buffer_frames))
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -987,6 +1036,7 @@ mod tests {
             highlight_first: true,
             sample: Some(99_999),
             language: Language::English,
+            buffer_frames: 700,
         };
         let params = SharedParams::new();
         settings.apply_to(&params);
@@ -998,6 +1048,7 @@ mod tests {
         // The sample index is restored raw; the UI's load_sample falls back
         // to the first candidate when the candidate index is out of range.
         assert_eq!(params.sample(), 99_999);
+        assert_eq!(params.buffer_frames(), 512);
     }
 
     #[test]
@@ -1038,6 +1089,7 @@ mod tests {
             highlight_first: false,
             sample: Some(2),
             language: Language::Russian,
+            buffer_frames: 1024,
         };
         let text = serde_json::to_string(&settings).unwrap();
         let loaded: AppSettings = serde_json::from_str(&text).unwrap();
@@ -1052,6 +1104,7 @@ mod tests {
         assert_eq!(loaded.highlight_first, settings.highlight_first);
         assert_eq!(loaded.sample, settings.sample);
         assert_eq!(loaded.language, Language::Russian);
+        assert_eq!(loaded.buffer_frames, 1024);
     }
 
     #[test]
@@ -1068,6 +1121,7 @@ mod tests {
         // Settings written before the language existed stay on the first-open
         // default instead of changing the user's interface unexpectedly.
         assert_eq!(loaded.language, Language::English);
+        assert_eq!(loaded.buffer_frames, DEFAULT_AUDIO_BUFFER_FRAMES);
 
         assert_eq!(
             loaded.effective_states(),
@@ -1095,6 +1149,7 @@ mod tests {
         );
         assert!(settings.highlight_first);
         assert_eq!(settings.language, Language::English);
+        assert_eq!(settings.buffer_frames, DEFAULT_AUDIO_BUFFER_FRAMES);
     }
 
     #[test]
@@ -1111,6 +1166,7 @@ mod tests {
             highlight_first: true,
             sample: None,
             language: Language::English,
+            buffer_frames: DEFAULT_AUDIO_BUFFER_FRAMES,
         };
 
         assert_eq!(
@@ -1142,6 +1198,7 @@ mod tests {
             highlight_first: true,
             sample: None,
             language: Language::English,
+            buffer_frames: DEFAULT_AUDIO_BUFFER_FRAMES,
         };
 
         assert_eq!(
@@ -1170,6 +1227,7 @@ mod tests {
         source.set_highlight_first(false);
         source.set_sample(4);
         source.set_language(Language::Ukrainian);
+        source.set_buffer_frames(1024);
         assert_eq!(source.add_custom_meter(7, 8), MeterChange::Added);
         assert_eq!(source.add_custom_meter(5, 4), MeterChange::Added);
         source.set_visible_meters(&[(7, 8), (4, 4), (3, 4), (2, 4)]);
@@ -1196,6 +1254,16 @@ mod tests {
         assert_eq!(restored.highlight_first(), source.highlight_first());
         assert_eq!(restored.sample(), source.sample());
         assert_eq!(restored.language(), source.language());
+        assert_eq!(restored.buffer_frames(), source.buffer_frames());
+    }
+
+    #[test]
+    fn buffer_frames_requests_are_normalized() {
+        assert_eq!(normalize_buffer_frames(0), 256);
+        assert_eq!(normalize_buffer_frames(300), 256);
+        assert_eq!(normalize_buffer_frames(700), 512);
+        assert_eq!(normalize_buffer_frames(1500), 1024);
+        assert_eq!(audio_buffer_frames_index(700), 1);
     }
 
     #[test]

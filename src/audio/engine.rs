@@ -13,7 +13,7 @@ use cpal::{
 
 use super::scheduler::{OutputSample, Scheduler};
 use super::sound_bank::{SoundBank, SoundPreset};
-use crate::model::SharedParams;
+use crate::model::{normalize_buffer_frames, SharedParams};
 
 pub struct AudioEngine {
     stream: Option<Stream>,
@@ -43,14 +43,12 @@ impl AudioEngine {
         let sample_format = supported.sample_format();
         let supported_buffer_size = *supported.buffer_size();
         let mut config: StreamConfig = supported.into();
-        // cpal/alsa's default configuration keeps roughly 75 ms queued before
-        // the frames produced by the next callback. That delay is very easy
-        // to hear on a tap, so request a small buffer while remaining inside
-        // the device's advertised limits.
-        config.buffer_size = low_latency_buffer_size(supported_buffer_size);
         let sample_rate = config.sample_rate.0;
         let params = Arc::new(SharedParams::new());
+        // Create live params before deriving the initial ALSA request so a
+        // future change to the default only has one source of truth.
         params.sample_rate.store(sample_rate, Ordering::Relaxed);
+        config.buffer_size = configured_buffer_size(supported_buffer_size, params.buffer_frames());
         // Transient initial bank only: the UI loads the persisted sample
         // before any widget (or sound) exists, and the headless smoke test
         // overrides it through settings or --preset.
@@ -90,7 +88,8 @@ impl AudioEngine {
         let supported_buffer_size = *supported.buffer_size();
         let sample_format = supported.sample_format();
         let mut config: StreamConfig = supported.into();
-        config.buffer_size = low_latency_buffer_size(supported_buffer_size);
+        config.buffer_size =
+            configured_buffer_size(supported_buffer_size, self.params.buffer_frames());
         let sample_rate = config.sample_rate.0;
 
         self.device = device;
@@ -273,6 +272,29 @@ impl AudioEngine {
         self.params.running.load(Ordering::Relaxed)
     }
 
+    /// Stores a new requested buffer size and rebuilds the output stream.
+    /// Audio servers can clamp or ignore this request, so the value is a
+    /// latency preference rather than an exact device buffer guarantee.
+    pub fn set_buffer_frames(&mut self, requested_frames: u32) -> Result<()> {
+        let requested_frames = normalize_buffer_frames(requested_frames);
+        let previous_frames = self.params.buffer_frames();
+        if requested_frames == previous_frames {
+            return Ok(());
+        }
+
+        let was_started = self.started.load(Ordering::SeqCst);
+        self.params.set_buffer_frames(requested_frames);
+
+        match self.restart_stream(was_started) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                // Keep the persisted choice and the loaded stream aligned.
+                self.params.set_buffer_frames(previous_frames);
+                Err(error)
+            }
+        }
+    }
+
     /// Rebuilds the output stream after a device error. Returns whether a
     /// rebuild was attempted; playback resumes automatically if the stream
     /// had been started before.
@@ -289,13 +311,28 @@ impl AudioEngine {
         }
         Ok(true)
     }
+
+    /// Drops the current stream, recreates it from the latest config, and
+    /// resumes it when the user had already enabled audio output.
+    fn restart_stream(&mut self, was_started: bool) -> Result<()> {
+        self.stream = None;
+        self.ensure_stream()?;
+
+        if was_started {
+            if let Some(stream) = self.stream.as_ref() {
+                stream.play()?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
-fn low_latency_buffer_size(supported: SupportedBufferSize) -> BufferSize {
-    const TARGET_FRAMES: u32 = 256;
-
+fn configured_buffer_size(supported: SupportedBufferSize, requested_frames: u32) -> BufferSize {
     match supported {
-        SupportedBufferSize::Range { min, max } => BufferSize::Fixed(TARGET_FRAMES.clamp(min, max)),
+        SupportedBufferSize::Range { min, max } => {
+            BufferSize::Fixed(requested_frames.clamp(min, max))
+        }
         SupportedBufferSize::Unknown => BufferSize::Default,
     }
 }
@@ -303,22 +340,31 @@ fn low_latency_buffer_size(supported: SupportedBufferSize) -> BufferSize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::DEFAULT_AUDIO_BUFFER_FRAMES;
 
     #[test]
-    fn low_latency_buffer_size_stays_within_device_limits() {
+    fn configured_buffer_size_stays_within_device_limits() {
+        let requested = DEFAULT_AUDIO_BUFFER_FRAMES;
         assert_eq!(
-            low_latency_buffer_size(SupportedBufferSize::Range { min: 16, max: 1024 }),
-            BufferSize::Fixed(256)
-        );
-        assert_eq!(
-            low_latency_buffer_size(SupportedBufferSize::Range {
-                min: 512,
-                max: 2048
-            }),
+            configured_buffer_size(SupportedBufferSize::Range { min: 16, max: 1024 }, requested),
             BufferSize::Fixed(512)
         );
         assert_eq!(
-            low_latency_buffer_size(SupportedBufferSize::Unknown),
+            configured_buffer_size(
+                SupportedBufferSize::Range {
+                    min: 512,
+                    max: 2048
+                },
+                requested
+            ),
+            BufferSize::Fixed(512)
+        );
+        assert_eq!(
+            configured_buffer_size(SupportedBufferSize::Range { min: 16, max: 384 }, requested),
+            BufferSize::Fixed(384)
+        );
+        assert_eq!(
+            configured_buffer_size(SupportedBufferSize::Unknown, requested),
             BufferSize::Default
         );
     }

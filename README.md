@@ -52,6 +52,7 @@
 - 🥁 **Custom time signatures** — Any meter from 1/2 to 16/16; pick up to 4 quick chips.
 - 🎯 **Beat muting** — Turn off the sound on any beat.
 - 🔊 **18 built-in samples.**
+- 🧱 **Audio buffering setting** — Choose 256, 512, or 1024 frames in Settings to balance latency and stability.
 - 🔄 **In-app updates** — Takto checks the latest GitHub Release at launch and installs updates with one click.
 
 ## Planned

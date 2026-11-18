@@ -11,9 +11,9 @@ use gtk::{gdk, gio, glib, CssProvider, IconTheme, STYLE_PROVIDER_PRIORITY_APPLIC
 use crate::audio::engine::AudioEngine;
 use crate::audio::sound_bank::SoundBank;
 use crate::model::{
-    default_states, meter_label, tempo_marking, AppSettings, BeatState, Language, MeterChange,
-    MeterUpdate, SharedParams, LANGUAGES, MAX_BEATS, MAX_CUSTOM_METERS, MAX_VOLUME,
-    METER_DENOMINATORS, PRESET_METERS, TEMPO_MARKINGS,
+    audio_buffer_frames_index, default_states, meter_label, tempo_marking, AppSettings, BeatState,
+    Language, MeterChange, MeterUpdate, SharedParams, AUDIO_BUFFER_FRAMES, LANGUAGES, MAX_BEATS,
+    MAX_CUSTOM_METERS, MAX_VOLUME, METER_DENOMINATORS, PRESET_METERS, TEMPO_MARKINGS,
 };
 use crate::update::{self, AssetKind, InstallContext, Release};
 
@@ -44,12 +44,13 @@ enum SettingsText {
     BeatsLabel,
     UnitLabel,
     SizeExists,
+    BufferSize,
 }
 
 /// One row per `Language`, one column per `SettingsText`. New columns keep
 /// their English text until they are translated; the Russian row is filled
 /// in as the reference for the remaining localizations.
-const SETTINGS_TEXTS: [[&str; 22]; 25] = [
+const SETTINGS_TEXTS: [[&str; 23]; 25] = [
     [
         "Settings",
         "Language",
@@ -73,6 +74,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "设置",
@@ -97,6 +99,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "सेटिंग्स",
@@ -121,6 +124,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Ajustes",
@@ -145,6 +149,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Paramètres",
@@ -169,6 +174,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "الإعدادات",
@@ -193,6 +199,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "সেটিংস",
@@ -217,6 +224,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Configurações",
@@ -241,6 +249,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Настройки",
@@ -265,6 +274,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Доли",
         "Единица",
         "Такой размер уже есть",
+        "Размер буфера",
     ],
     [
         "ترتیبات",
@@ -289,6 +299,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Einstellungen",
@@ -313,6 +324,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "設定",
@@ -337,6 +349,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "ਸੈਟਿੰਗਾਂ",
@@ -361,6 +374,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "सेटिंग्ज",
@@ -385,6 +399,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "సెట్టింగ్‌లు",
@@ -409,6 +424,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Ayarlar",
@@ -433,6 +449,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "설정",
@@ -457,6 +474,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Cài đặt",
@@ -481,6 +499,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Impostazioni",
@@ -505,6 +524,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Pengaturan",
@@ -529,6 +549,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Ustawienia",
@@ -553,6 +574,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Налаштування",
@@ -577,6 +599,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Instellingen",
@@ -601,6 +624,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "การตั้งค่า",
@@ -625,6 +649,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
     [
         "Mipangilio",
@@ -649,6 +674,7 @@ const SETTINGS_TEXTS: [[&str; 22]; 25] = [
         "Beats",
         "Unit",
         "This size already exists",
+        "Buffer size",
     ],
 ];
 
@@ -658,6 +684,14 @@ fn settings_text(language: Language, text: SettingsText) -> &'static str {
 
 fn about_text(language: Language) -> &'static str {
     settings_text(language, SettingsText::AboutTakto)
+}
+
+/// Pairs each requested buffer size with the nominal one-callback duration at
+/// the active device rate. This is an approximation: PipeWire/ALSA can apply
+/// its own quantum and add additional output latency.
+fn buffer_dropdown_label(frames: u32, sample_rate: u32) -> String {
+    let milliseconds = f64::from(frames) / f64::from(sample_rate.max(1)) * 1000.0;
+    format!("{frames} (~{milliseconds:.1} ms)")
 }
 
 fn show_about(parent: &adw::Window) {
@@ -2780,6 +2814,39 @@ fn build_settings_modal(
     sample_row.append(&play_button);
     content.append(&sample_row);
 
+    let buffer_title = gtk::Label::new(Some(settings_text(
+        params.language(),
+        SettingsText::BufferSize,
+    )));
+    buffer_title.set_halign(gtk::Align::Start);
+    buffer_title.add_css_class("settings-section-title");
+    content.append(&buffer_title);
+
+    let buffer_labels = AUDIO_BUFFER_FRAMES
+        .iter()
+        .map(|&frames| buffer_dropdown_label(frames, engine.borrow().sample_rate))
+        .collect::<Vec<_>>();
+    let buffer_select = gtk::DropDown::from_strings(
+        buffer_labels
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    buffer_select.set_tooltip_text(Some(settings_text(
+        params.language(),
+        SettingsText::BufferSize,
+    )));
+    buffer_select.set_hexpand(true);
+    buffer_select.set_valign(gtk::Align::Center);
+    // Restore before connecting the handler, matching the other selectors.
+    buffer_select.set_selected(audio_buffer_frames_index(params.buffer_frames()) as u32);
+
+    let buffer_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    buffer_row.set_hexpand(true);
+    buffer_row.append(&buffer_select);
+    content.append(&buffer_row);
+
     let normal_wav_button = gtk::Button::with_label("Обычный WAV…");
     let accent_wav_button = gtk::Button::with_label("Акцентный WAV…");
 
@@ -2849,6 +2916,8 @@ fn build_settings_modal(
     let header_title_for_language = header_title.clone();
     let language_title_for_language = language_title.clone();
     let sample_title_for_language = sample_title.clone();
+    let buffer_title_for_language = buffer_title.clone();
+    let buffer_select_for_language = buffer_select.clone();
     let play_button_for_language = play_button.clone();
     let first_beat_for_language = first_beat.clone();
     let about_button_for_language = about_button.clone();
@@ -2864,6 +2933,9 @@ fn build_settings_modal(
         header_title_for_language.set_text(settings);
         language_title_for_language.set_text(settings_text(language, SettingsText::Language));
         sample_title_for_language.set_text(settings_text(language, SettingsText::Sample));
+        buffer_title_for_language.set_text(settings_text(language, SettingsText::BufferSize));
+        buffer_select_for_language
+            .set_tooltip_text(Some(settings_text(language, SettingsText::BufferSize)));
         play_button_for_language
             .set_tooltip_text(Some(settings_text(language, SettingsText::PlayMeasure)));
         first_beat_for_language
@@ -2947,6 +3019,34 @@ fn build_settings_modal(
                 button_for_preview.set_sensitive(true);
                 busy_for_preview.set(false);
             }
+        }
+    });
+
+    let engine_for_buffer = engine.clone();
+    let params_for_buffer = params.clone();
+    let dropdown_for_buffer = buffer_select.clone();
+    let toast_for_buffer = toast.clone();
+    buffer_select.connect_selected_notify(move |select| {
+        let Some(&requested_frames) = AUDIO_BUFFER_FRAMES.get(select.selected() as usize) else {
+            return;
+        };
+        if requested_frames == params_for_buffer.buffer_frames() {
+            return;
+        }
+
+        if let Err(error) = engine_for_buffer
+            .borrow_mut()
+            .set_buffer_frames(requested_frames)
+        {
+            eprintln!("Could not change audio buffer: {error:#}");
+            toast_for_buffer.show(&format!(
+                "{}: {error:#}",
+                error_text(params_for_buffer.language(), ErrorText::AudioStream)
+            ));
+            // Put the selector back on the request that the stream is
+            // actually using; the early return above prevents recursion.
+            dropdown_for_buffer
+                .set_selected(audio_buffer_frames_index(params_for_buffer.buffer_frames()) as u32);
         }
     });
 
