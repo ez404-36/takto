@@ -4,9 +4,11 @@ All notable changes to Takto are documented in this file. The format is based on
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-11-18
+
 ### Added
 
-- Audio buffering preference in Settings: choose 256, 512, or 1024 frames, with each option showing its nominal delay at the current sample rate. Takto rebuilds the output stream after a change, persists the choice, and loads older settings with 512 frames. PipeWire/ALSA still negotiates the effective latency.
+- Audio buffering preference in Settings: choose 256, 512, or 1024 frames, with each option showing its nominal delay at the current sample rate. Takto rebuilds the output stream after a change, persists the choice, and loads older settings with 512 frames. PipeWire/ALSA still negotiates the effective latency. (#890912d)
 
 ## [0.1.7] - 2026-11-12
 
@@ -108,7 +110,8 @@ Initial release (under the original name Metrognome).
 - Synthetic click noise removed and round tap forced. (#113d405)
 - Build against GTK 4.14 and use the libadwaita toolbar layout; tightened desktop layout and centered playback controls. (#22dc3e0, #df84a3f, #d03ec7e, #b787feb)
 
-[Unreleased]: https://github.com/ez404-36/takto/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/ez404-36/takto/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/ez404-36/takto/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/ez404-36/takto/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/ez404-36/takto/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/ez404-36/takto/compare/v0.1.4...v0.1.5
