@@ -4,6 +4,12 @@ All notable changes to Takto are documented in this file. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- Audio buffer choices now include 2048 and 4096 frames alongside 256/512/1024. PipeWire's ALSA layer maps a request onto roughly a quarter of it as the graph quantum, so 1024 frames left only a ~5 ms budget and caused audible underruns on slower wake-ups; 2048/4096 provide ~10–21 ms quanta without server-side tweaks.
+- Takto now prefers a 48 kHz output configuration when the device supports it (same format and channel count as the ALSA default, otherwise any 48 kHz config). PipeWire/PulseAudio servers usually run at 48 kHz while ALSA defaults to 44.1 kHz, so this removes per-sample resampling; devices without 48 kHz keep their default configuration.
+- The audio engine logs the output stream configuration (host, device, format, rate, channels, requested buffer) to stderr whenever the stream is built, so a mismatch between the request and the latency the server actually grants can be spotted without reverse-engineering the settings.
+
 ## [0.1.8] - 2026-11-18
 
 ### Added

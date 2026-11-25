@@ -52,7 +52,7 @@
 - 🥁 **Custom time signatures** — Any meter from 1/2 to 16/16; pick up to 4 quick chips.
 - 🎯 **Beat muting** — Turn off the sound on any beat.
 - 🔊 **18 built-in samples.**
-- 🧱 **Audio buffering setting** — Choose 256, 512, or 1024 frames in Settings to balance latency and stability.
+- 🧱 **Audio buffering setting** — Choose 256, 512, 1024, 2048, or 4096 frames in Settings to balance latency and stability; the audio server still negotiates the effective latency. Takto prefers a 48 kHz device configuration when available to avoid resampling.
 - 🔄 **In-app updates** — Takto checks the latest GitHub Release at launch and installs updates with one click.
 
 ## Planned

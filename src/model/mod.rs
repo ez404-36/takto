@@ -11,8 +11,10 @@ pub const MAX_VOLUME: f32 = 2.0;
 
 /// Requested callback buffer sizes, in frames per channel. The audio server
 /// still negotiates the effective latency, so these are preferences rather
-/// than guarantees.
-pub const AUDIO_BUFFER_FRAMES: [u32; 3] = [256, 512, 1024];
+/// than guarantees. PipeWire's ALSA layer maps a request onto roughly a
+/// quarter of it as the graph quantum, so the larger options exist to reach
+/// comfortable latencies (2048 -> ~512-frame quantum, 4096 -> ~1024).
+pub const AUDIO_BUFFER_FRAMES: [u32; 5] = [256, 512, 1024, 2048, 4096];
 pub const DEFAULT_AUDIO_BUFFER_FRAMES: u32 = 512;
 
 /// Built-in meters, always available in the sizes dialog. The first number
@@ -1263,6 +1265,8 @@ mod tests {
         assert_eq!(normalize_buffer_frames(300), 256);
         assert_eq!(normalize_buffer_frames(700), 512);
         assert_eq!(normalize_buffer_frames(1500), 1024);
+        assert_eq!(normalize_buffer_frames(2500), 2048);
+        assert_eq!(normalize_buffer_frames(5000), 4096);
         assert_eq!(audio_buffer_frames_index(700), 1);
     }
 

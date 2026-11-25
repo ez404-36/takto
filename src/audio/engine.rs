@@ -9,11 +9,50 @@ use arc_swap::ArcSwap;
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     BufferSize, Device, SampleFormat, Stream, StreamConfig, SupportedBufferSize,
+    SupportedStreamConfig,
 };
 
 use super::scheduler::{OutputSample, Scheduler};
 use super::sound_bank::{SoundBank, SoundPreset};
 use crate::model::{normalize_buffer_frames, SharedParams};
+
+/// Sample rate preferred over the ALSA device default. PipeWire and
+/// PulseAudio servers usually run at 48 kHz while ALSA reports 44.1 kHz as
+/// the device default, so requesting 48 kHz keeps the metronome out of the
+/// server's resampler.
+const PREFERRED_SAMPLE_RATE: u32 = 48_000;
+
+/// Picks the output configuration for a device: the default config, unless
+/// the device also supports the default format and channel count at
+/// [`PREFERRED_SAMPLE_RATE`] (falling back to any format at that rate).
+fn preferred_output_config(device: &Device) -> Result<SupportedStreamConfig> {
+    let default_config = device
+        .default_output_config()
+        .context("default output configuration is unavailable")?;
+    let preferred_rate = cpal::SampleRate(PREFERRED_SAMPLE_RATE);
+    let default_format = default_config.sample_format();
+    let default_channels = default_config.channels();
+
+    let ranges = device
+        .supported_output_configs()
+        .context("supported output configurations are unavailable")?
+        .collect::<Vec<_>>();
+    let preferred_shape = ranges
+        .iter()
+        .find(|range| {
+            range.sample_format() == default_format
+                && range.channels() == default_channels
+                && range.try_with_sample_rate(preferred_rate).is_some()
+        })
+        .or_else(|| {
+            ranges
+                .iter()
+                .find(|range| range.try_with_sample_rate(preferred_rate).is_some())
+        })
+        .and_then(|range| range.try_with_sample_rate(preferred_rate));
+
+    Ok(preferred_shape.unwrap_or(default_config))
+}
 
 pub struct AudioEngine {
     stream: Option<Stream>,
@@ -37,9 +76,7 @@ impl AudioEngine {
         let device = host
             .default_output_device()
             .context("no default audio output device")?;
-        let supported = device
-            .default_output_config()
-            .context("default output configuration is unavailable")?;
+        let supported = preferred_output_config(&device)?;
         let sample_format = supported.sample_format();
         let supported_buffer_size = *supported.buffer_size();
         let mut config: StreamConfig = supported.into();
@@ -82,9 +119,7 @@ impl AudioEngine {
         let device = host
             .default_output_device()
             .context("no default audio output device")?;
-        let supported = device
-            .default_output_config()
-            .context("default output configuration is unavailable")?;
+        let supported = preferred_output_config(&device)?;
         let supported_buffer_size = *supported.buffer_size();
         let sample_format = supported.sample_format();
         let mut config: StreamConfig = supported.into();
@@ -140,6 +175,23 @@ impl AudioEngine {
         // and resolve the current default device afresh.
         self.stream = None;
         self.refresh_device()?;
+
+        // The effective latency is decided by the audio server, so recording
+        // what was actually negotiated makes mismatches (for example a
+        // requested 1024 frames becoming a 256-frame PipeWire quantum)
+        // diagnosable without external tools.
+        eprintln!(
+            "audio output: host={host} device=\"{device}\" format={sample_format:?} rate={rate} Hz channels={channels} buffer={buffer:?}",
+            host = cpal::default_host().id().name(),
+            device = self
+                .device
+                .name()
+                .unwrap_or_else(|_| "<unknown>".to_string()),
+            sample_format = self.sample_format,
+            rate = self.config.sample_rate.0,
+            channels = self.config.channels,
+            buffer = self.config.buffer_size,
+        );
 
         let stream_errored = self.stream_errored.clone();
         let error = move |stream_error: cpal::StreamError| {
